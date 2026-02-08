@@ -1,115 +1,178 @@
+@import url('https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;700;900&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-}
-
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 215 28% 17%;
+    --card: 0 0% 100%;
+    --card-foreground: 215 28% 17%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 28% 17%;
+    --primary: 209 100% 16%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 215 28% 17%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 215 28% 17%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 209 100% 16%;
+    --radius: 0.25rem;
+    --chart-1: 142 76% 36%;
+    --chart-2: 38 92% 50%;
+    --chart-3: 0 84% 60%;
+    --chart-4: 217 91% 60%;
+    --chart-5: 262 83% 58%;
+  }
 }
 
 @layer base {
-    :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
-    }
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-inter;
+  }
 }
 
-@layer base {
-    * {
-        @apply border-border;
-    }
-    body {
-        @apply bg-background text-foreground;
-    }
+/* Custom Font Classes */
+.font-chivo {
+  font-family: 'Chivo', sans-serif;
 }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
+.font-inter {
+  font-family: 'Inter', sans-serif;
+}
 
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Corporate Colors */
+.bg-corporate-navy {
+  background-color: #002D54;
+}
+
+.text-corporate-navy {
+  color: #002D54;
+}
+
+.border-corporate-navy {
+  border-color: #002D54;
+}
+
+/* Sidebar Styles */
+.sidebar-link {
+  @apply flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/10 hover:text-white transition-all rounded-sm;
+}
+
+.sidebar-link.active {
+  @apply bg-white/15 text-white border-l-2 border-white;
+}
+
+/* Card Styles */
+.card-corporate {
+  @apply bg-white border border-slate-200 shadow-none rounded-sm;
+}
+
+/* Table Styles */
+.table-corporate {
+  @apply w-full border-collapse;
+}
+
+.table-corporate th {
+  @apply bg-slate-50 border-b border-slate-200 px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider;
+}
+
+.table-corporate td {
+  @apply px-4 py-3 text-sm text-slate-700 border-b border-slate-100;
+}
+
+.table-corporate tr:hover {
+  @apply bg-slate-50/50;
+}
+
+/* Badge Variants */
+.badge-success {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200;
+}
+
+.badge-warning {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200;
+}
+
+.badge-error {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200;
+}
+
+.badge-neutral {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200;
+}
+
+.badge-info {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200;
+}
+
+/* KPI Card */
+.kpi-card {
+  @apply bg-white border border-slate-200 rounded-sm p-6;
+}
+
+.kpi-value {
+  @apply text-3xl font-mono font-bold text-slate-900 tracking-tight;
+}
+
+.kpi-label {
+  @apply text-xs font-semibold text-slate-500 uppercase tracking-widest mt-2;
+}
+
+/* Input Styles */
+.input-corporate {
+  @apply bg-white border border-slate-200 rounded-md h-10 px-3 focus:ring-2 focus:ring-[#002D54] focus:border-transparent transition-shadow w-full;
+}
+
+/* Button Styles */
+.btn-primary {
+  @apply bg-[#002D54] hover:bg-[#001A33] text-white rounded-md font-medium px-6 py-2.5 shadow-sm transition-all active:scale-95;
+}
+
+.btn-secondary {
+  @apply bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-md font-medium px-6 py-2.5 transition-all;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
