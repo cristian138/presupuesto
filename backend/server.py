@@ -717,7 +717,7 @@ async def get_monthly_summary(
     return reports
 
 # ============== AUDIT ROUTES ==============
-@api_router.get("/audit-logs", response_model=List[dict])
+@api_router.get("/audit-logs")
 async def list_audit_logs(
     page: int = 1,
     limit: int = 50,
@@ -733,7 +733,9 @@ async def list_audit_logs(
     
     skip = (page - 1) * limit
     logs = await db.audit_logs.find(query, {"_id": 0}).sort("timestamp", -1).skip(skip).limit(limit).to_list(limit)
-    return logs
+    # Clean any ObjectIds from stored data
+    cleaned_logs = [clean_mongo_doc(log) for log in logs]
+    return cleaned_logs
 
 @api_router.get("/audit-logs/count")
 async def count_audit_logs(
