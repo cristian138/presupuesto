@@ -44,12 +44,34 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 # ============== HELPER FUNCTIONS ==============
+def clean_mongo_doc(doc: dict) -> dict:
+    """Remove MongoDB _id and convert ObjectIds to strings"""
+    if doc is None:
+        return None
+    cleaned = {}
+    for key, value in doc.items():
+        if key == '_id':
+            continue
+        if hasattr(value, '__str__') and type(value).__name__ == 'ObjectId':
+            cleaned[key] = str(value)
+        elif isinstance(value, dict):
+            cleaned[key] = clean_mongo_doc(value)
+        elif isinstance(value, list):
+            cleaned[key] = [clean_mongo_doc(item) if isinstance(item, dict) else item for item in value]
+        else:
+            cleaned[key] = value
+    return cleaned
+
 async def create_audit_log(
     user_id: str, user_name: str, user_email: str,
     action_type: str, entity_type: str, ip_address: str,
     entity_id: str = None, monthly_period: str = None,
     previous_values: dict = None, new_values: dict = None, details: str = None
 ):
+    # Clean any MongoDB ObjectIds from values
+    clean_prev = clean_mongo_doc(previous_values) if previous_values else None
+    clean_new = clean_mongo_doc(new_values) if new_values else None
+    
     audit = AuditLog(
         user_id=user_id,
         user_name=user_name,
@@ -59,8 +81,8 @@ async def create_audit_log(
         entity_id=entity_id,
         monthly_period=monthly_period,
         ip_address=ip_address,
-        previous_values=previous_values,
-        new_values=new_values,
+        previous_values=clean_prev,
+        new_values=clean_new,
         details=details
     )
     doc = audit.model_dump()
