@@ -243,6 +243,48 @@ async def list_users(current_user: dict = Depends(require_role(["super_admin"]))
         ))
     return result
 
+@api_router.post("/users", response_model=UserResponse)
+async def create_user(
+    user_data: UserCreate,
+    request: Request,
+    current_user: dict = Depends(require_role(["super_admin"]))
+):
+    # Check if email exists
+    existing = await db.users.find_one({"email": user_data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="El correo ya está registrado")
+    
+    user = User(
+        email=user_data.email,
+        full_name=user_data.full_name,
+        phone=user_data.phone,
+        role=user_data.role,
+        is_active=True
+    )
+    
+    doc = user.model_dump()
+    doc['password_hash'] = hash_password(user_data.password)
+    doc['created_at'] = doc['created_at'].isoformat()
+    doc['updated_at'] = doc['updated_at'].isoformat()
+    
+    await db.users.insert_one(doc)
+    
+    await create_audit_log(
+        current_user["sub"], current_user["name"], current_user["email"],
+        "crear", "usuario", get_client_ip(request),
+        entity_id=user.id, details=f"Usuario creado: {user.email}"
+    )
+    
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        phone=user.phone,
+        role=user.role,
+        is_active=True,
+        created_at=user.created_at
+    )
+
 @api_router.put("/users/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: str,
