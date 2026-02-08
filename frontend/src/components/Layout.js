@@ -175,7 +175,7 @@ export const MobileHeader = ({ onMenuClick }) => {
 
 export const Header = ({ title, subtitle, children }) => {
   return (
-    <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 lg:top-0 z-40 px-4 lg:px-8 py-4 mt-14 lg:mt-0">
+    <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-14 lg:top-0 z-30 px-4 lg:px-8 py-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-chivo font-bold text-lg lg:text-xl text-slate-900">{title}</h1>
@@ -194,7 +194,7 @@ export const MainLayout = ({ children }) => {
     <div className="min-h-screen bg-[#F8F9FA]">
       <MobileHeader onMenuClick={() => setSidebarOpen(true)} />
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="lg:ml-64 pt-14 lg:pt-0">
+      <main className="lg:ml-64">
         {children}
       </main>
     </div>
