@@ -1,4 +1,6 @@
 # Sistema de Control Presupuestal - PRD
+## Academia Jotuns Club
+### Dominio: presupuesto.academiajotuns.com
 
 ## Problema Original
 Sistema web administrativo que permite el control integral de gastos presupuestados frente a gastos realmente ejecutados, con enfoque en gestión mensual, validación de pagos, roles de usuario, auditoría inalterable, notificaciones automáticas por WhatsApp y correo electrónico, y generación de soportes en PDF.
