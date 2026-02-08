@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/input';
 import { Button } from '../components/ui/button';
 import { Label } from '../components/ui/label';
 import { toast } from 'sonner';
 import { Eye, EyeOff, LogIn, UserPlus } from 'lucide-react';
+import axios from 'axios';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_audit-pay-track/artifacts/ha0eypok_ICONO-NEGATIVO--SIN-FONDO.png";
 const BG_URL = "https://images.unsplash.com/photo-1770009971150-f50bc7a373a4?auto=format&fit=crop&w=1920&q=80";
+const API = process.env.REACT_APP_BACKEND_URL + '/api';
 
 export const LoginPage = () => {
   const { login, register } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
+  const [allowRegister, setAllowRegister] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingUsers, setCheckingUsers] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -20,6 +24,28 @@ export const LoginPage = () => {
     full_name: '',
     phone: ''
   });
+
+  // Check if any users exist (only allow registration if no users exist)
+  useEffect(() => {
+    const checkUsers = async () => {
+      try {
+        // Try to access a public endpoint or check users
+        // If we get a 401, it means the system has users and requires login
+        // For now, we'll make registration available only for first setup
+        const response = await axios.get(`${API}/auth/check-users`).catch(() => null);
+        if (response && response.data && response.data.allow_register) {
+          setAllowRegister(true);
+        } else {
+          setAllowRegister(false);
+        }
+      } catch {
+        setAllowRegister(false);
+      } finally {
+        setCheckingUsers(false);
+      }
+    };
+    checkUsers();
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,33 +79,33 @@ export const LoginPage = () => {
   return (
     <div className="min-h-screen flex">
       {/* Left Panel - Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-white">
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-8 bg-white">
         <div className="w-full max-w-md animate-fade-in">
           {/* Logo */}
-          <div className="flex items-center gap-3 mb-12">
-            <div className="w-12 h-12 bg-[#002D54] rounded-sm flex items-center justify-center">
-              <img src={LOGO_URL} alt="Logo" className="w-8 h-8 object-contain" />
+          <div className="flex items-center gap-3 mb-8 lg:mb-12">
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-[#002D54] rounded-sm flex items-center justify-center">
+              <img src={LOGO_URL} alt="Logo" className="w-6 h-6 lg:w-8 lg:h-8 object-contain" />
             </div>
             <div>
-              <h1 className="font-chivo font-bold text-xl text-slate-900">Control Presupuestal</h1>
-              <p className="text-xs text-slate-500">Sistema de Gestión Financiera</p>
+              <h1 className="font-chivo font-bold text-lg lg:text-xl text-slate-900">Academia Jotuns Club</h1>
+              <p className="text-[10px] lg:text-xs text-slate-500">Sistema de Control Presupuestal</p>
             </div>
           </div>
 
           {/* Title */}
-          <div className="mb-8">
-            <h2 className="font-chivo font-bold text-2xl text-slate-900 mb-2">
-              {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'}
+          <div className="mb-6 lg:mb-8">
+            <h2 className="font-chivo font-bold text-xl lg:text-2xl text-slate-900 mb-2">
+              {isLogin ? 'Iniciar Sesión' : 'Crear Cuenta Inicial'}
             </h2>
             <p className="text-slate-500 text-sm">
               {isLogin 
                 ? 'Ingrese sus credenciales para acceder al sistema' 
-                : 'Complete el formulario para registrarse'}
+                : 'Configure la cuenta del Super Administrador'}
             </p>
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4 lg:space-y-5">
             {!isLogin && (
               <>
                 <div>
@@ -181,16 +207,18 @@ export const LoginPage = () => {
             </Button>
           </form>
 
-          {/* Toggle */}
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsLogin(!isLogin)}
-              className="text-sm text-[#002D54] hover:underline"
-              data-testid="toggle-auth-mode-btn"
-            >
-              {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia Sesión'}
-            </button>
-          </div>
+          {/* Toggle - only show if registration is allowed (no users exist) */}
+          {!checkingUsers && allowRegister && (
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => setIsLogin(!isLogin)}
+                className="text-sm text-[#002D54] hover:underline"
+                data-testid="toggle-auth-mode-btn"
+              >
+                {isLogin ? '¿Primera vez? Crear cuenta de administrador' : '¿Ya tienes cuenta? Inicia Sesión'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -203,11 +231,11 @@ export const LoginPage = () => {
         <div className="relative z-10 flex flex-col items-center justify-center w-full p-12 text-white">
           <img src={LOGO_URL} alt="Logo" className="w-24 h-24 mb-8" />
           <h2 className="font-chivo font-bold text-3xl mb-4 text-center">
-            Sistema de Control Presupuestal
+            Academia Jotuns Club
           </h2>
           <p className="text-white/80 text-center max-w-md">
-            Gestione sus presupuestos mensuales, controle pagos, 
-            reciba notificaciones automáticas y genere reportes completos.
+            Sistema de Control Presupuestal para la gestión 
+            integral de gastos, pagos y reportes financieros.
           </p>
           <div className="mt-12 grid grid-cols-2 gap-6 text-center">
             <div className="bg-white/10 rounded-sm p-4">
