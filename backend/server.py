@@ -753,7 +753,7 @@ async def count_audit_logs(
     return {"count": count}
 
 # ============== NOTIFICATION CONFIG ROUTES ==============
-@api_router.get("/notification-config", response_model=dict)
+@api_router.get("/notification-config")
 async def get_notification_config(current_user: dict = Depends(require_role(["super_admin"]))):
     config = await db.notification_config.find_one({}, {"_id": 0})
     if not config:
@@ -763,7 +763,7 @@ async def get_notification_config(current_user: dict = Depends(require_role(["su
         config_doc['updated_at'] = config_doc['updated_at'].isoformat()
         await db.notification_config.insert_one(config_doc)
         return config_doc
-    return config
+    return clean_mongo_doc(config)
 
 @api_router.put("/notification-config", response_model=dict)
 async def update_notification_config(
