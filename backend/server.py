@@ -114,14 +114,18 @@ def generate_monthly_periods(start_date: str, total_months: int) -> list:
 # ============== AUTH ROUTES ==============
 @api_router.post("/auth/register", response_model=TokenResponse)
 async def register(user_data: UserCreate, request: Request):
+    # Check if first user (only allow public registration for first user)
+    user_count = await db.users.count_documents({})
+    if user_count > 0:
+        raise HTTPException(status_code=403, detail="El registro público está deshabilitado. Contacte al administrador.")
+    
     # Check if email exists
     existing = await db.users.find_one({"email": user_data.email})
     if existing:
         raise HTTPException(status_code=400, detail="El correo ya está registrado")
     
-    # Check if first user (make super_admin)
-    user_count = await db.users.count_documents({})
-    role = "super_admin" if user_count == 0 else user_data.role
+    # First user is always super_admin
+    role = "super_admin"
     
     user = User(
         email=user_data.email,
