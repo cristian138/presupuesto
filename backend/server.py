@@ -164,6 +164,12 @@ async def register(user_data: UserCreate, request: Request):
         )
     )
 
+@api_router.get("/auth/check-users")
+async def check_users():
+    """Check if registration is allowed (only if no users exist)"""
+    user_count = await db.users.count_documents({})
+    return {"allow_register": user_count == 0, "user_count": user_count}
+
 @api_router.post("/auth/login", response_model=TokenResponse)
 async def login(credentials: UserLogin, request: Request):
     user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
