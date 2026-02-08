@@ -157,7 +157,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
 export const MobileHeader = ({ onMenuClick }) => {
   return (
-    <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#002D54] z-30 flex items-center px-4">
+    <div className="lg:hidden fixed top-0 left-0 right-0 h-14 bg-[#002D54] z-50 flex items-center px-4 shadow-md">
       <button 
         onClick={onMenuClick}
         className="p-2 text-white hover:bg-white/10 rounded-sm"
