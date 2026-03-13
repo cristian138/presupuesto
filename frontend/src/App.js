@@ -12,6 +12,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { UsersPage } from './pages/UsersPage';
 import { AuditPage } from './pages/AuditPage';
 import { NotificationsPage } from './pages/NotificationsPage';
+import IntegrationMonitorPage from './pages/IntegrationMonitorPage';
 import './App.css';
 
 // Protected Route Component
@@ -136,6 +137,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute adminOnly>
             <NotificationsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/integration"
+        element={
+          <ProtectedRoute adminOnly>
+            <IntegrationMonitorPage />
           </ProtectedRoute>
         }
       />
