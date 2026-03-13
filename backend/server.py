@@ -3,8 +3,10 @@ from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel
 import os
 import logging
+import httpx
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -610,6 +612,35 @@ async def create_payment(
         new_values={"concept": payment.concept, "paid_value": payment.paid_value, "difference": difference}
     )
     
+    # ============== NOTIFICAR A TALENTO HUMANO SI PROVIENE DE UNA CUENTA DE COBRO ==============
+    th_payment_id = monthly.get("th_payment_id")
+    th_notified = False
+    if th_payment_id:
+        # Este pago proviene de una cuenta de cobro de TH, notificar automáticamente
+        background_tasks.add_task(
+            notify_th_payment_completed,
+            th_payment_id,
+            payment.id,
+            payment.pdf_url,
+            payment.payment_date,
+            payment.paid_value,
+            payment.payment_method,
+            payment.verification_code
+        )
+        th_notified = True
+        
+        # Marcar como notificado (se actualizará en la tarea de fondo)
+        await db.payments.update_one(
+            {"id": payment.id},
+            {"$set": {
+                "th_payment_id": th_payment_id,
+                "th_notification_scheduled": True
+            }}
+        )
+        
+        logger.info(f"Notificación a TH programada para pago {payment.id} -> TH payment {th_payment_id}")
+    # ========================================================================================
+    
     # Send notification if enabled
     config = await db.notification_config.find_one({}, {"_id": 0})
     if config and config.get("notify_on_payment"):
@@ -637,8 +668,52 @@ async def create_payment(
         "id": payment.id,
         "verification_code": payment.verification_code,
         "message": "Pago registrado exitosamente",
-        "pdf_url": payment.pdf_url
+        "pdf_url": payment.pdf_url,
+        "th_notification_scheduled": th_notified,
+        "th_payment_id": th_payment_id if th_notified else None
     }
+
+# Función auxiliar para notificar a TH automáticamente
+async def notify_th_payment_completed(
+    th_payment_id: str,
+    payment_id: str,
+    pdf_url: str,
+    payment_date: str,
+    paid_value: float,
+    payment_method: str,
+    verification_code: str
+):
+    """Notifica automáticamente al sistema de TH cuando se completa un pago de cuenta de cobro"""
+    try:
+        webhook_data = {
+            "source": "presupuesto",
+            "event_type": "payment_support_uploaded",
+            "payment_id": th_payment_id,
+            "support_file_url": pdf_url,
+            "support_file_name": f"comprobante_{payment_id}.pdf",
+            "payment_date": payment_date,
+            "paid_value": paid_value,
+            "payment_method": payment_method,
+            "verification_code": verification_code
+        }
+        
+        logger.info(f"Notificando automáticamente a TH: {webhook_data}")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://th.academiajotuns.com/api/webhook/presupuesto",
+                json=webhook_data
+            )
+            
+            if response.status_code in [200, 201]:
+                logger.info(f"Notificación a TH exitosa para pago {th_payment_id}")
+                return True
+            else:
+                logger.error(f"Error notificando a TH: {response.status_code}")
+                return False
+    except Exception as e:
+        logger.error(f"Error al notificar a TH: {e}")
+        return False
 
 @api_router.get("/payments", response_model=List[dict])
 async def list_payments(
@@ -895,6 +970,437 @@ async def test_email(
     """
     result = await send_email(email, "Prueba - Sistema de Control Presupuestal", html)
     return result
+
+# ============== WEBHOOK DESDE SISTEMA DE TALENTO HUMANO ==============
+
+class TalentoHumanoWebhookPayload(BaseModel):
+    source: str
+    event_type: str
+    payment_id: str
+    concept: str
+    monthly_value: float  # Valor en miles
+    expense_type: str
+    total_months: int
+    start_date: str  # YYYY-MM-DD
+    end_date: str    # YYYY-MM-DD
+    responsible_name: str
+    notes: Optional[str] = None
+    approval_date: Optional[str] = None
+
+# Responsable fijo para las cuentas de cobro
+RESPONSABLE_COBROS = "Sharon Alejandra Cardenas Ospina"
+
+@api_router.post("/webhook/talento-humano")
+async def webhook_from_talento_humano(
+    payload: TalentoHumanoWebhookPayload,
+    request: Request,
+    background_tasks: BackgroundTasks
+):
+    """
+    Webhook receptor desde el sistema de Talento Humano.
+    Cuando se aprueba una cuenta de cobro en TH, este endpoint crea automáticamente
+    un presupuesto y su registro mensual correspondiente.
+    
+    Datos esperados:
+    - Concepto: "Cuenta de Cobro - [Nombre colaborador]"
+    - Valor en miles
+    - Tipo de gasto: Fijo
+    - Número de meses: 1
+    - Fecha inicio: día de aprobación
+    - Fecha fin: 48 horas después
+    - Responsable: Sharon Alejandra Cardenas Ospina
+    """
+    if payload.source != "talento_humano":
+        raise HTTPException(status_code=400, detail="Fuente no válida")
+    
+    if payload.event_type != "payment_approved":
+        raise HTTPException(status_code=400, detail="Tipo de evento no soportado")
+    
+    logger.info(f"Webhook recibido desde TH: {payload.model_dump()}")
+    
+    try:
+        # Buscar el usuario responsable (Sharon) en el sistema
+        responsible = await db.users.find_one({"full_name": RESPONSABLE_COBROS}, {"_id": 0})
+        
+        if not responsible:
+            # Si no existe el responsable, crear un usuario de referencia
+            responsible_id = "th-integration-user"
+            responsible_name = RESPONSABLE_COBROS
+            logger.warning(f"Usuario responsable '{RESPONSABLE_COBROS}' no encontrado, usando ID de referencia")
+        else:
+            responsible_id = responsible["id"]
+            responsible_name = responsible["full_name"]
+        
+        # Crear el presupuesto principal
+        budget = Budget(
+            expense_type=payload.expense_type,
+            concept=payload.concept,
+            monthly_value=payload.monthly_value,
+            periodicity="mensual",
+            total_months=payload.total_months,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            responsible_id=responsible_id,
+            responsible_name=responsible_name,
+            status="activo",
+            notes=payload.notes,
+            created_by="talento-humano-integration"
+        )
+        
+        budget_doc = budget.model_dump()
+        budget_doc['created_at'] = budget_doc['created_at'].isoformat()
+        budget_doc['updated_at'] = budget_doc['updated_at'].isoformat()
+        budget_doc['th_payment_id'] = payload.payment_id  # Referencia al pago en TH
+        budget_doc['th_approval_date'] = payload.approval_date
+        budget_doc['source'] = 'talento_humano'
+        
+        await db.budgets.insert_one(budget_doc)
+        logger.info(f"Presupuesto creado: {budget.id}")
+        
+        # Crear el presupuesto mensual
+        start_date = datetime.strptime(payload.start_date, "%Y-%m-%d")
+        
+        monthly = MonthlyBudget(
+            budget_id=budget.id,
+            concept=payload.concept,
+            month=start_date.month,
+            year=start_date.year,
+            budgeted_value=payload.monthly_value,
+            expense_type=payload.expense_type,
+            responsible_id=responsible_id,
+            responsible_name=responsible_name,
+            due_date=payload.end_date
+        )
+        
+        monthly_doc = monthly.model_dump()
+        monthly_doc['created_at'] = monthly_doc['created_at'].isoformat()
+        monthly_doc['updated_at'] = monthly_doc['updated_at'].isoformat()
+        monthly_doc['th_payment_id'] = payload.payment_id  # Referencia al pago en TH
+        monthly_doc['source'] = 'talento_humano'
+        
+        await db.monthly_budgets.insert_one(monthly_doc)
+        logger.info(f"Presupuesto mensual creado: {monthly.id}")
+        
+        # Registrar en auditoría
+        await create_audit_log(
+            user_id="talento-humano-integration",
+            user_name="Sistema de Talento Humano",
+            user_email="th@academiajotuns.com",
+            action_type="crear",
+            entity_type="presupuesto_th",
+            ip_address=get_client_ip(request),
+            entity_id=budget.id,
+            new_values={
+                "concept": payload.concept,
+                "monthly_value": payload.monthly_value,
+                "th_payment_id": payload.payment_id
+            },
+            details=f"Presupuesto creado automáticamente desde cuenta de cobro aprobada en TH: {payload.payment_id}"
+        )
+        
+        # Enviar notificación si está configurado
+        config = await db.notification_config.find_one({}, {"_id": 0})
+        if config and config.get("notify_on_creation") and config.get("email_enabled"):
+            if responsible and responsible.get("email"):
+                background_tasks.add_task(
+                    send_budget_reminder,
+                    responsible.get("phone", ""),
+                    responsible.get("email", ""),
+                    payload.concept,
+                    start_date.month,
+                    start_date.year,
+                    payload.monthly_value,
+                    payload.end_date,
+                    "pendiente"
+                )
+        
+        return {
+            "success": True,
+            "message": "Presupuesto creado exitosamente desde cuenta de cobro",
+            "budget_id": budget.id,
+            "monthly_budget_id": monthly.id
+        }
+        
+    except Exception as e:
+        logger.error(f"Error procesando webhook de TH: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al procesar webhook: {str(e)}")
+
+
+@api_router.post("/payments/{payment_id}/notify-th")
+async def notify_payment_to_th(
+    payment_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Envía notificación al sistema de Talento Humano cuando se registra un pago
+    que proviene de una cuenta de cobro de TH.
+    """
+    # Buscar el pago
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    # Buscar el presupuesto mensual relacionado
+    monthly = await db.monthly_budgets.find_one({"id": payment["monthly_budget_id"]}, {"_id": 0})
+    if not monthly:
+        raise HTTPException(status_code=404, detail="Presupuesto mensual no encontrado")
+    
+    # Verificar si proviene de TH
+    th_payment_id = monthly.get("th_payment_id")
+    if not th_payment_id:
+        return {"success": False, "message": "Este pago no proviene del sistema de Talento Humano"}
+    
+    try:
+        # Enviar webhook a TH
+        webhook_data = {
+            "source": "presupuesto",
+            "event_type": "payment_support_uploaded",
+            "payment_id": th_payment_id,
+            "support_file_url": payment.get("pdf_url"),
+            "support_file_name": f"comprobante_{payment_id}.pdf",
+            "payment_date": payment.get("payment_date"),
+            "paid_value": payment.get("paid_value"),
+            "payment_method": payment.get("payment_method"),
+            "verification_code": payment.get("verification_code")
+        }
+        
+        logger.info(f"Enviando notificación de pago a TH: {webhook_data}")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://th.academiajotuns.com/api/webhook/presupuesto",
+                json=webhook_data
+            )
+            
+            if response.status_code in [200, 201]:
+                # Marcar como notificado
+                await db.payments.update_one(
+                    {"id": payment_id},
+                    {"$set": {
+                        "th_notified": True,
+                        "th_notified_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+                
+                await create_audit_log(
+                    user_id=current_user["sub"],
+                    user_name=current_user["name"],
+                    user_email=current_user["email"],
+                    action_type="email_enviado",
+                    entity_type="webhook_th",
+                    ip_address=get_client_ip(request),
+                    entity_id=payment_id,
+                    details=f"Soporte de pago enviado a TH para cuenta de cobro: {th_payment_id}"
+                )
+                
+                return {
+                    "success": True,
+                    "message": "Soporte de pago enviado exitosamente a Talento Humano"
+                }
+            else:
+                logger.error(f"Error enviando a TH: {response.status_code} - {response.text}")
+                return {
+                    "success": False,
+                    "message": f"Error al enviar a TH: {response.text}"
+                }
+                
+    except httpx.RequestError as e:
+        logger.error(f"Error de conexión con TH: {e}")
+        return {
+            "success": False,
+            "message": f"Error de conexión con Talento Humano: {str(e)}"
+        }
+    except Exception as e:
+        logger.error(f"Error inesperado: {e}")
+        return {
+            "success": False,
+            "message": f"Error inesperado: {str(e)}"
+        }
+
+# ============== PANEL DE MONITOREO DE INTEGRACIÓN ==============
+
+@api_router.get("/integration/status")
+async def get_integration_status(
+    current_user: dict = Depends(require_role(["super_admin"]))
+):
+    """
+    Obtiene el estado de la integración con el sistema de Talento Humano.
+    Muestra presupuestos recibidos desde TH y pagos notificados.
+    """
+    # Obtener presupuestos que vienen de TH
+    th_budgets = await db.budgets.find(
+        {"source": "talento_humano"},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    # Obtener presupuestos mensuales de TH
+    th_monthly = await db.monthly_budgets.find(
+        {"source": "talento_humano"},
+        {"_id": 0}
+    ).to_list(100)
+    
+    monthly_map = {m["budget_id"]: m for m in th_monthly}
+    
+    pending_payment = []
+    paid = []
+    notified_th = []
+    
+    for budget in th_budgets:
+        monthly = monthly_map.get(budget["id"], {})
+        payment_id = monthly.get("payment_id")
+        
+        budget_info = {
+            "id": budget["id"],
+            "concept": budget.get("concept", ""),
+            "monthly_value": budget.get("monthly_value", 0),
+            "th_payment_id": budget.get("th_payment_id"),
+            "th_approval_date": budget.get("th_approval_date"),
+            "created_at": budget.get("created_at"),
+            "responsible_name": budget.get("responsible_name"),
+            "monthly_id": monthly.get("id"),
+            "payment_status": monthly.get("payment_status", "pendiente"),
+            "payment_id": payment_id
+        }
+        
+        if payment_id:
+            # Verificar si se notificó a TH
+            payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+            if payment:
+                budget_info["payment_date"] = payment.get("payment_date")
+                budget_info["paid_value"] = payment.get("paid_value")
+                budget_info["th_notified"] = payment.get("th_notified", False)
+                budget_info["th_notified_at"] = payment.get("th_notified_at")
+                
+                if payment.get("th_notified"):
+                    notified_th.append(budget_info)
+                else:
+                    paid.append(budget_info)
+        else:
+            pending_payment.append(budget_info)
+    
+    return {
+        "total_from_th": len(th_budgets),
+        "pending_payment_count": len(pending_payment),
+        "paid_count": len(paid),
+        "notified_th_count": len(notified_th),
+        "pending_payment": pending_payment,
+        "paid": paid,
+        "notified_th": notified_th,
+        "th_url": "https://th.academiajotuns.com"
+    }
+
+@api_router.post("/integration/notify-th/{payment_id}")
+async def manual_notify_th(
+    payment_id: str,
+    request: Request,
+    current_user: dict = Depends(require_role(["super_admin"]))
+):
+    """
+    Envía manualmente la notificación a TH para un pago.
+    Útil si la notificación automática falló.
+    """
+    # Buscar el pago
+    payment = await db.payments.find_one({"id": payment_id}, {"_id": 0})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Pago no encontrado")
+    
+    # Buscar el presupuesto mensual relacionado
+    monthly = await db.monthly_budgets.find_one({"id": payment["monthly_budget_id"]}, {"_id": 0})
+    if not monthly:
+        raise HTTPException(status_code=404, detail="Presupuesto mensual no encontrado")
+    
+    # Verificar si proviene de TH
+    th_payment_id = monthly.get("th_payment_id")
+    if not th_payment_id:
+        raise HTTPException(status_code=400, detail="Este pago no proviene del sistema de Talento Humano")
+    
+    try:
+        # Enviar webhook a TH
+        webhook_data = {
+            "source": "presupuesto",
+            "event_type": "payment_support_uploaded",
+            "payment_id": th_payment_id,
+            "support_file_url": payment.get("pdf_url"),
+            "support_file_name": f"comprobante_{payment_id}.pdf",
+            "payment_date": payment.get("payment_date"),
+            "paid_value": payment.get("paid_value"),
+            "payment_method": payment.get("payment_method"),
+            "verification_code": payment.get("verification_code")
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://th.academiajotuns.com/api/webhook/presupuesto",
+                json=webhook_data
+            )
+            
+            if response.status_code in [200, 201]:
+                # Marcar como notificado
+                await db.payments.update_one(
+                    {"id": payment_id},
+                    {"$set": {
+                        "th_notified": True,
+                        "th_notified_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+                
+                await create_audit_log(
+                    current_user["sub"], current_user["name"], current_user["email"],
+                    "email_enviado", "webhook_th", get_client_ip(request),
+                    entity_id=payment_id,
+                    details=f"Notificación manual a TH para pago: {th_payment_id}"
+                )
+                
+                return {
+                    "success": True,
+                    "message": "Notificación enviada exitosamente a Talento Humano"
+                }
+            else:
+                raise HTTPException(
+                    status_code=500, 
+                    detail=f"Error al enviar a TH: {response.status_code} - {response.text}"
+                )
+                
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail=f"Error de conexión con TH: {str(e)}")
+
+@api_router.get("/integration/health")
+async def check_th_health():
+    """
+    Verifica la conectividad con el sistema de Talento Humano.
+    Endpoint público para monitoreo.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://th.academiajotuns.com/api/health")
+            
+            if response.status_code == 200:
+                return {
+                    "status": "online",
+                    "th_reachable": True,
+                    "response_time_ms": response.elapsed.total_seconds() * 1000,
+                    "message": "Sistema de Talento Humano accesible"
+                }
+            else:
+                return {
+                    "status": "degraded",
+                    "th_reachable": True,
+                    "http_status": response.status_code,
+                    "message": f"Sistema responde pero con código {response.status_code}"
+                }
+    except httpx.TimeoutException:
+        return {
+            "status": "timeout",
+            "th_reachable": False,
+            "message": "Timeout al conectar con sistema de Talento Humano"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "th_reachable": False,
+            "message": f"Error de conexión: {str(e)}"
+        }
 
 # Include router
 app.include_router(api_router)
