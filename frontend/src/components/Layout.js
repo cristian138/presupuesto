@@ -12,7 +12,8 @@ import {
   LogOut,
   Bell,
   Menu,
-  X
+  X,
+  ArrowRightLeft
 } from 'lucide-react';
 
 const LOGO_URL = "https://customer-assets.emergentagent.com/job_audit-pay-track/artifacts/ha0eypok_ICONO-NEGATIVO--SIN-FONDO.png";
@@ -44,6 +45,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { to: '/users', icon: Users, label: 'Usuarios' },
     { to: '/audit', icon: ClipboardList, label: 'Auditoría' },
     { to: '/notifications', icon: Bell, label: 'Notificaciones' },
+    { to: '/integration', icon: ArrowRightLeft, label: 'Integración TH' },
   ];
 
   return (
